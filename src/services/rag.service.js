@@ -76,7 +76,7 @@ function isGeneralConversation(question) {
 
 /**
  * Clean answer to remove chunk references and technical details
- * Preserves bullet points and formatting
+ * Preserves bullet points and formatting, removes unwanted asterisks
  */
 function cleanAnswer(answer) {
     if (!answer || typeof answer !== 'string') {
@@ -99,6 +99,12 @@ function cleanAnswer(answer) {
     // Remove patterns like "According to chunk..." or "In chunk..."
     cleaned = cleaned.replace(/\b(according to|in|from|based on)\s+chunk\s*\d*\b/gi, '');
     
+    // Remove unwanted asterisks (*) - convert to bullet points or remove
+    cleaned = cleaned.replace(/\*\s+/g, '• '); // Convert * to bullet
+    cleaned = cleaned.replace(/\*\*/g, ''); // Remove double asterisks (bold markers)
+    cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1'); // Remove text wrapped in asterisks
+    cleaned = cleaned.replace(/^\s*\*\s*$/gm, ''); // Remove standalone asterisks on lines
+    
     // Normalize bullet points - ensure consistent formatting
     cleaned = cleaned.replace(/^[\s]*[-*•]\s+/gm, '• '); // Standardize to bullet
     cleaned = cleaned.replace(/^[\s]*\d+[\.)]\s+/gm, (match) => {
@@ -118,6 +124,10 @@ function cleanAnswer(answer) {
     // Clean up double commas and other artifacts
     cleaned = cleaned.replace(/\s*,\s*,/g, ',');
     cleaned = cleaned.replace(/^\s*[-•]\s*$/gm, ''); // Remove standalone bullet markers
+    
+    // Remove any remaining standalone asterisks
+    cleaned = cleaned.replace(/\*\s*/g, '');
+    cleaned = cleaned.replace(/\s*\*/g, '');
     
     // Remove leading/trailing whitespace from each line
     cleaned = cleaned.split('\n').map(line => line.trim()).join('\n');
@@ -143,7 +153,7 @@ export async function ask(question) {
             // Use cached model or get working model
             let workingModel = await getWorkingModel(apiKey);
             if (!workingModel) {
-                workingModel = { name: 'gemini-2.5-flash', version: 'v1beta' };
+                workingModel = { name: 'gemini-2.5-flash', version: 'v1' };
             }
 
             // Build conversational message with context
@@ -238,128 +248,30 @@ Assistant:`;
                 });
             });
 
-        // Try to get working model (from cache or by fetching available models)
-        let workingModel = await getWorkingModel(apiKey);
+        // Use the working model directly - gemini-2.5-flash with v1 API
+        const workingModel = { name: 'gemini-2.5-flash', version: 'v1' };
         
-        // If no cached model, try common model names first (with gemini-2.5-flash prioritized)
-        const modelAttempts = [
-            { name: 'gemini-2.5-flash', version: 'v1beta' }, // Known working model
-            { name: 'gemini-2.0-flash-exp', version: 'v1beta' },
-            { name: 'gemini-1.5-pro', version: 'v1beta' },
-            { name: 'gemini-pro', version: 'v1beta' },
-            { name: 'gemini-1.5-flash', version: 'v1beta' }
-        ];
+        const url = `https://generativelanguage.googleapis.com/${workingModel.version}/models/${workingModel.name}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                contents: geminiContents
+            })
+        });
 
-        let answer;
-        let lastError;
-        let successfulModel = null;
-
-        // If we have a cached working model, try it first
-        if (workingModel) {
-            try {
-                const url = `https://generativelanguage.googleapis.com/${workingModel.version}/models/${workingModel.name}:generateContent?key=${apiKey}`;
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        contents: geminiContents
-                    })
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (answer) {
-                        successfulModel = workingModel;
-                    }
-                }
-            } catch (error) {
-                // Cache might be stale, clear it and try other models
-                cachedWorkingModel = null;
-                workingModel = null;
-            }
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
         }
 
-        // If cached model didn't work, try the list of common models
+        const data = await response.json();
+        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
         if (!answer) {
-            for (const attempt of modelAttempts) {
-                // Skip if we already tried this (cached model)
-                if (workingModel && attempt.name === workingModel.name && attempt.version === workingModel.version) {
-                    continue;
-                }
-
-                try {
-                    const url = `https://generativelanguage.googleapis.com/${attempt.version}/models/${attempt.name}:generateContent?key=${apiKey}`;
-                    
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            contents: geminiContents
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        lastError = `Model ${attempt.name} (${attempt.version}): ${response.status}`;
-                        continue; // Try next model
-                    }
-
-                    const data = await response.json();
-                    answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    
-                    if (answer) {
-                        successfulModel = attempt;
-                        // Cache the working model for future requests
-                        cachedWorkingModel = attempt;
-                        console.log(`Successfully used and cached model: ${attempt.name} (${attempt.version})`);
-                        break; // Success!
-                    }
-                } catch (error) {
-                    lastError = `Model ${attempt.name} (${attempt.version}): ${error.message}`;
-                    continue; // Try next model
-                }
-            }
-        }
-
-        // If still no answer, fetch available models and try them
-        if (!answer && !workingModel) {
-            console.log("All standard model attempts failed, fetching available models...");
-            workingModel = await getWorkingModel(apiKey);
-            
-            if (workingModel) {
-                try {
-                    const url = `https://generativelanguage.googleapis.com/${workingModel.version}/models/${workingModel.name}:generateContent?key=${apiKey}`;
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            contents: geminiContents
-                        })
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (answer) {
-                            successfulModel = workingModel;
-                            console.log(`Successfully used model from available list: ${workingModel.name}`);
-                        }
-                    }
-                } catch (error) {
-                    console.error(`Failed with available model ${workingModel.name}:`, error);
-                }
-            }
-        }
-
-        if (!answer) {
-            throw new Error(`All Gemini model attempts failed. Last error: ${lastError || 'Unknown error'}`);
+            throw new Error("No answer received from Gemini API");
         }
         
         // Clean the answer to remove chunk references and technical details

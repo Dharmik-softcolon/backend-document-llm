@@ -37,18 +37,45 @@ export async function ensureCollection() {
  * Store document chunks
  */
 export async function storeChunks(chunks) {
-    await qdrant.upsert(COLLECTION_NAME, {
-        wait: true,
-        points: chunks.map(c => ({
-            id: uuid(),
-            vector: c.embedding,
-            payload: {
-                text: c.text,
-                file: c.file || "unknown",
-                page: c.page ?? null
-            }
-        }))
+    // Validate input
+    if (!chunks || !Array.isArray(chunks)) {
+        throw new Error("Chunks must be a non-empty array");
+    }
+
+    // Filter out empty chunks and validate
+    const validChunks = chunks.filter(c => {
+        return c && 
+               c.text && 
+               typeof c.text === 'string' && 
+               c.text.trim().length > 0 &&
+               c.embedding && 
+               Array.isArray(c.embedding) && 
+               c.embedding.length > 0;
     });
+
+    if (validChunks.length === 0) {
+        throw new Error("No valid chunks to store. All chunks are empty or invalid.");
+    }
+
+    try {
+        await qdrant.upsert(COLLECTION_NAME, {
+            wait: true,
+            points: validChunks.map(c => ({
+                id: uuid(),
+                vector: c.embedding,
+                payload: {
+                    text: c.text.trim(),
+                    file: c.file || "unknown",
+                    page: c.page ?? null
+                }
+            }))
+        });
+        
+        console.log(`Successfully stored ${validChunks.length} chunks (filtered ${chunks.length - validChunks.length} empty chunks)`);
+    } catch (error) {
+        console.error("Error storing chunks in Qdrant:", error);
+        throw new Error(`Failed to store chunks: ${error.message || "Unknown error"}`);
+    }
 }
 
 /**

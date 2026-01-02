@@ -1,9 +1,23 @@
 export function chunkText(text, size = 800, overlap = 200) {
+    // Validate input
+    if (!text || typeof text !== 'string') {
+        return [];
+    }
+
+    const trimmedText = text.trim();
+    if (trimmedText.length === 0) {
+        return [];
+    }
+
     let chunks = [];
     let start = 0;
 
-    while (start < text.length) {
-        chunks.push(text.slice(start, start + size));
+    while (start < trimmedText.length) {
+        const chunk = trimmedText.slice(start, start + size).trim();
+        // Only add non-empty chunks
+        if (chunk.length > 0) {
+            chunks.push(chunk);
+        }
         start += size - overlap;
     }
 
