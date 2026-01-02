@@ -74,6 +74,60 @@ function isGeneralConversation(question) {
     return conversationalPatterns.some(pattern => pattern.test(trimmed));
 }
 
+/**
+ * Clean answer to remove chunk references and technical details
+ * Preserves bullet points and formatting
+ */
+function cleanAnswer(answer) {
+    if (!answer || typeof answer !== 'string') {
+        return answer;
+    }
+
+    let cleaned = answer;
+
+    // Remove chunk references (e.g., "chunk 1", "chunk 2", "[CHUNK 1]", etc.)
+    cleaned = cleaned.replace(/\[?CHUNK\s*\d+\]?/gi, '');
+    cleaned = cleaned.replace(/chunk\s*\d+/gi, '');
+    cleaned = cleaned.replace(/section\s*\d+/gi, '');
+    
+    // Remove references to "the chunk", "this chunk", "these chunks"
+    cleaned = cleaned.replace(/\b(this|these|the)\s+chunk(s)?\b/gi, '');
+    
+    // Remove standalone chunk mentions (but preserve bullet points)
+    cleaned = cleaned.replace(/\bchunk(s)?\b/gi, '');
+    
+    // Remove patterns like "According to chunk..." or "In chunk..."
+    cleaned = cleaned.replace(/\b(according to|in|from|based on)\s+chunk\s*\d*\b/gi, '');
+    
+    // Normalize bullet points - ensure consistent formatting
+    cleaned = cleaned.replace(/^[\s]*[-*•]\s+/gm, '• '); // Standardize to bullet
+    cleaned = cleaned.replace(/^[\s]*\d+[\.)]\s+/gm, (match) => {
+        // Preserve numbered lists
+        return match.trim() + ' ';
+    });
+    
+    // Clean up excessive whitespace but preserve line breaks for bullet points
+    cleaned = cleaned.replace(/[ \t]+/g, ' '); // Multiple spaces to single space
+    cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n'); // Max 3 consecutive newlines
+    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n'); // Normalize triple newlines
+    
+    // Ensure proper spacing around bullet points
+    cleaned = cleaned.replace(/([^\n])\n•/g, '$1\n\n•'); // Add blank line before bullet if missing
+    cleaned = cleaned.replace(/•\s*\n\s*•/g, '•\n•'); // Remove extra lines between bullets
+    
+    // Clean up double commas and other artifacts
+    cleaned = cleaned.replace(/\s*,\s*,/g, ',');
+    cleaned = cleaned.replace(/^\s*[-•]\s*$/gm, ''); // Remove standalone bullet markers
+    
+    // Remove leading/trailing whitespace from each line
+    cleaned = cleaned.split('\n').map(line => line.trim()).join('\n');
+    
+    // Final trim
+    cleaned = cleaned.trim();
+    
+    return cleaned;
+}
+
 export async function ask(question) {
     try {
         // Check if this is general conversation
@@ -93,10 +147,11 @@ export async function ask(question) {
             }
 
             // Build conversational message with context
-            const conversationalPrompt = `You are a friendly and helpful document assistant. 
+            const conversationalPrompt = `You are a friendly and helpful document analysis assistant. 
 Respond naturally and conversationally to greetings and general questions. 
 If the user introduces themselves, acknowledge them warmly.
 If they ask about documents, let them know you're ready to help answer questions about uploaded documents.
+Keep your responses concise and friendly.
 
 User: ${question}
 Assistant:`;
@@ -123,7 +178,7 @@ Assistant:`;
                 const data = await response.json();
                 const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (answer) {
-                    return answer;
+                    return cleanAnswer(answer);
                 }
             }
         }
@@ -132,8 +187,8 @@ Assistant:`;
         // 1️⃣ Embed query
         const vector = await embed(question);
 
-        // 2️⃣ Vector search
-        const hits = await search(vector);
+        // 2️⃣ Vector search - get more chunks for better context
+        const hits = await search(vector, 7);
 
         if (!hits || hits.length === 0) {
             return "No relevant information found in the uploaded document.";
@@ -307,7 +362,10 @@ Assistant:`;
             throw new Error(`All Gemini model attempts failed. Last error: ${lastError || 'Unknown error'}`);
         }
         
-        return answer;
+        // Clean the answer to remove chunk references and technical details
+        const cleanedAnswer = cleanAnswer(answer);
+        
+        return cleanedAnswer;
     } catch (error) {
         console.error("Error in ask function:", error);
         throw new Error(`Failed to process question: ${error.message || "Unknown error"}`);
