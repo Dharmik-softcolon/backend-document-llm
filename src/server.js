@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import uploadRoutes from "./routes/upload.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
+import speechRoutes from "./routes/speech.routes.js";
 import { ensureCollection } from "./services/qdrant.service.js";
 
 dotenv.config();
@@ -18,6 +19,7 @@ const startServer = async () => {
 
         app.use("/api/upload", uploadRoutes);
         app.use("/api/chat", chatRoutes);
+        app.use("/api/speech", speechRoutes);
 
         app.use((err, req, res, next) => {
             console.error("Unhandled error:", err);
