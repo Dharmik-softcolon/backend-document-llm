@@ -9,6 +9,7 @@ export const config = {
     key: {
         gemini_key: process.env.GEMINI_API_KEY,
         qdrnt_key: process.env.QDRANT_API_KEY,
+        assemblyai_key: process.env.ASSEMBLYAI_API_KEY,
     },
     url: {
         qdrnt_url: process.env.QDRANT_URL,

@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import uploadRoutes from "./routes/upload.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
+import transcribeRoutes from "./routes/transcribe.routes.js";
 import { ensureCollection } from "./services/qdrant.service.js";
 
 dotenv.config();
@@ -26,6 +27,7 @@ const startServer = async () => {
 
         app.use("/api/upload", uploadRoutes);
         app.use("/api/chat", chatRoutes);
+        app.use("/api/transcribe", transcribeRoutes);
 
         const PORT = process.env.PORT || 5000;
         app.listen(PORT, () => {

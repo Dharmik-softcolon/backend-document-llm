@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.9.0",
+    "assemblyai": "^4.22.1",
     "canvas": "^2.11.2",
     "cors": "^2.8.5",
     "csv-parse": "^5.5.3",
