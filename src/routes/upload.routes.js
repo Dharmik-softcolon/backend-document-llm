@@ -1,7 +1,6 @@
 import express from "express";
 import { upload } from "../utils/file.utils.js";
 import { extractPdfByPage } from "../services/pdf.service.js";
-import { parseCSV } from "../services/csv.service.js";
 import { chunkText } from "../services/chunk.service.js";
 import { embed } from "../services/embedding.service.js";
 import { storeChunks } from "../services/qdrant.service.js";
@@ -9,7 +8,17 @@ import path from "path";
 
 const router = express.Router();
 
-router.post("/", upload.single("file"), async (req, res) => {
+router.post("/", (req, res, next) => {
+    upload.single("file")(req, res, (err) => {
+        if (err) {
+            return res.status(400).json({
+                success: false,
+                error: err.message || "Failed to upload file"
+            });
+        }
+        next();
+    });
+}, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -22,29 +31,24 @@ router.post("/", upload.single("file"), async (req, res) => {
         const fileExtension = path.extname(fileName).toLowerCase();
         console.log(`Processing file: ${fileName} (${fileExtension})`);
 
-        let pages = [];
-
-        if (fileExtension === '.pdf') {
-            pages = await extractPdfByPage(filePath);
-        } else if (fileExtension === '.csv') {
-            pages = await parseCSV(filePath);
-        } else {
+        if (fileExtension !== ".pdf") {
             return res.status(400).json({
                 success: false,
-                error: `Unsupported file type: ${fileExtension}. Supported types: .pdf, .csv`
+                error: `Unsupported file type: ${fileExtension}. Supported type: .pdf`
             });
         }
+
+        const pages = await extractPdfByPage(filePath);
         
         if (!pages || pages.length === 0) {
-            const fileTypeName = fileExtension === '.pdf' ? 'PDF' : 'CSV';
             return res.status(400).json({
                 success: false,
-                error: `No data extracted from ${fileTypeName}. The file might be empty or corrupted.`
+                error: `No data extracted from PDF. The file might be empty or corrupted.`
             });
         }
 
-        const fileTypeLabel = fileExtension === '.pdf' ? 'pages' : 'rows';
-        const fileTypeName = fileExtension === '.pdf' ? 'PDF' : 'CSV';
+        const fileTypeLabel = "pages";
+        const fileTypeName = "PDF";
         console.log(`Extracted ${pages.length} ${fileTypeLabel} from ${fileTypeName}`);
 
         const chunksToStore = [];
