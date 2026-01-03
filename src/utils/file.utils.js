@@ -23,11 +23,13 @@ export const upload = multer({
         const ext = path.extname(file.originalname || "").toLowerCase();
         const isPdfByExt = ext === ".pdf";
         const isPdfByMime = (file.mimetype || "").toLowerCase() === "application/pdf";
+        const isTxtByExt = ext === ".txt";
+        const isTxtByMime = (file.mimetype || "").toLowerCase() === "text/plain";
 
-        if (isPdfByExt || isPdfByMime) {
+        if (isPdfByExt || isPdfByMime || isTxtByExt || isTxtByMime) {
             return cb(null, true);
         }
 
-        return cb(new Error("Only PDF files are allowed"), false);
+        return cb(new Error("Only PDF and TXT files are allowed"), false);
     }
 });
