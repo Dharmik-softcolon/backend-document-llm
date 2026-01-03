@@ -11,7 +11,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Global error handler middleware
 app.use((err, req, res, next) => {
     console.error("Unhandled error:", err);
     res.status(500).json({ 
@@ -20,10 +19,8 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Initialize server
-async function startServer() {
+const startServer = async () => {
     try {
-        // 🔑 ENSURE QDRANT COLLECTION EXISTS
         await ensureCollection();
         console.log("Qdrant collection initialized successfully");
 
@@ -38,6 +35,6 @@ async function startServer() {
         console.error("Failed to start server:", error);
         process.exit(1);
     }
-}
+};
 
 startServer();

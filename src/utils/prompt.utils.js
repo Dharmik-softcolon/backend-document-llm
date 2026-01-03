@@ -1,14 +1,8 @@
-/**
- * Builds a strict RAG prompt using retrieved chunks
- * Supports text + image references
- */
-
-export function buildRagPrompt({
-                                   question,
-                                   chunks,
-                                   fileName
-                               }) {
-    // Build clean context without chunk labels
+export const buildRagPrompt = ({
+    question,
+    chunks,
+    fileName
+}) => {
     const context = chunks
         .map((c) => {
             const pageInfo = c.page ? ` (Page ${c.page})` : '';
@@ -16,7 +10,6 @@ export function buildRagPrompt({
         })
         .join("\n\n---\n\n");
 
-    // Detect if question is general conversation vs document query
     const isGeneralConversation = /^(hello|hi|hey|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye|my name is|i am|i'm|myself|my self)/i.test(question.trim());
 
     return [
@@ -77,4 +70,4 @@ Please provide a clear, well-structured answer based on the document content abo
 - Format your answer to be easy to read and understand:`
         }
     ];
-}
+};

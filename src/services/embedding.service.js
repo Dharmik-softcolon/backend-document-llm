@@ -1,7 +1,7 @@
 import { openai } from "../config/gemini.js";
 import { config } from "../config/credential.js";
 
-export async function embed(text) {
+export const embed = async (text) => {
     try {
         if (!text || typeof text !== 'string' || text.trim().length === 0) {
             throw new Error("Text input is required for embedding");
@@ -10,7 +10,6 @@ export async function embed(text) {
         let embedding;
         
         try {
-            // Try OpenAI SDK format first
             const res = await openai.embeddings.create({
                 model: "text-embedding-004",
                 input: text
@@ -24,7 +23,6 @@ export async function embed(text) {
         } catch (sdkError) {
             console.log("OpenAI SDK embedding failed, trying direct Gemini API:", sdkError.message);
             
-            // Fallback: Direct Gemini API call for embeddings
             const apiKey = config.key.gemini_key;
             if (!apiKey) {
                 throw new Error("Gemini API key is not configured");
@@ -64,4 +62,4 @@ export async function embed(text) {
         console.error("Error in embed function:", error);
         throw new Error(`Embedding failed: ${error.message || "Unknown error"}`);
     }
-}
+};

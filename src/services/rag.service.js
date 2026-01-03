@@ -4,13 +4,9 @@ import { openai } from "../config/gemini.js";
 import { buildRagPrompt } from "../utils/prompt.utils.js";
 import { config } from "../config/credential.js";
 
-// Cache for the working model name to avoid repeated API calls
 let cachedWorkingModel = null;
 
-/**
- * Helper function to list available Gemini models (for debugging)
- */
-async function listAvailableModels() {
+const listAvailableModels = async () => {
     try {
         const apiKey = config.key.gemini_key;
         if (!apiKey) return null;
@@ -27,22 +23,16 @@ async function listAvailableModels() {
         console.error("Failed to list models:", error);
     }
     return null;
-}
+};
 
-/**
- * Get a working Gemini model, using cache if available
- */
-async function getWorkingModel(apiKey) {
-    // If we have a cached working model, try it first
+const getWorkingModel = async (apiKey) => {
     if (cachedWorkingModel) {
         return cachedWorkingModel;
     }
 
-    // Try to fetch available models and find one that works
     const availableModels = await listAvailableModels();
     
     if (availableModels && availableModels.length > 0) {
-        // Find a model that supports generateContent
         const generateContentModel = availableModels.find(m => 
             m.supportedGenerationMethods?.includes('generateContent')
         );
@@ -56,12 +46,9 @@ async function getWorkingModel(apiKey) {
     }
 
     return null;
-}
+};
 
-/**
- * Check if a question is general conversation (not document-related)
- */
-function isGeneralConversation(question) {
+const isGeneralConversation = (question) => {
     const trimmed = question.trim().toLowerCase();
     const conversationalPatterns = [
         /^(hello|hi|hey|good morning|good afternoon|good evening|greetings)/,
@@ -72,91 +59,70 @@ function isGeneralConversation(question) {
     ];
     
     return conversationalPatterns.some(pattern => pattern.test(trimmed));
-}
+};
 
-/**
- * Clean answer to remove chunk references and technical details
- * Preserves bullet points and formatting, removes unwanted asterisks
- */
-function cleanAnswer(answer) {
+const cleanAnswer = (answer) => {
     if (!answer || typeof answer !== 'string') {
         return answer;
     }
 
     let cleaned = answer;
 
-    // Remove chunk references (e.g., "chunk 1", "chunk 2", "[CHUNK 1]", etc.)
     cleaned = cleaned.replace(/\[?CHUNK\s*\d+\]?/gi, '');
     cleaned = cleaned.replace(/chunk\s*\d+/gi, '');
     cleaned = cleaned.replace(/section\s*\d+/gi, '');
     
-    // Remove references to "the chunk", "this chunk", "these chunks"
     cleaned = cleaned.replace(/\b(this|these|the)\s+chunk(s)?\b/gi, '');
     
-    // Remove standalone chunk mentions (but preserve bullet points)
     cleaned = cleaned.replace(/\bchunk(s)?\b/gi, '');
     
-    // Remove patterns like "According to chunk..." or "In chunk..."
     cleaned = cleaned.replace(/\b(according to|in|from|based on)\s+chunk\s*\d*\b/gi, '');
     
-    // Remove unwanted asterisks (*) - convert to bullet points or remove
-    cleaned = cleaned.replace(/\*\s+/g, '• '); // Convert * to bullet
-    cleaned = cleaned.replace(/\*\*/g, ''); // Remove double asterisks (bold markers)
-    cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1'); // Remove text wrapped in asterisks
-    cleaned = cleaned.replace(/^\s*\*\s*$/gm, ''); // Remove standalone asterisks on lines
+    cleaned = cleaned.replace(/\*\s+/g, '• ');
+    cleaned = cleaned.replace(/\*\*/g, '');
+    cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1');
+    cleaned = cleaned.replace(/^\s*\*\s*$/gm, '');
     
-    // Normalize bullet points - ensure consistent formatting
-    cleaned = cleaned.replace(/^[\s]*[-*•]\s+/gm, '• '); // Standardize to bullet
+    cleaned = cleaned.replace(/^[\s]*[-*•]\s+/gm, '• ');
     cleaned = cleaned.replace(/^[\s]*\d+[\.)]\s+/gm, (match) => {
-        // Preserve numbered lists
         return match.trim() + ' ';
     });
     
-    // Clean up excessive whitespace but preserve line breaks for bullet points
-    cleaned = cleaned.replace(/[ \t]+/g, ' '); // Multiple spaces to single space
-    cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n'); // Max 3 consecutive newlines
-    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n'); // Normalize triple newlines
+    cleaned = cleaned.replace(/[ \t]+/g, ' ');
+    cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n');
+    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n');
     
-    // Ensure proper spacing around bullet points
-    cleaned = cleaned.replace(/([^\n])\n•/g, '$1\n\n•'); // Add blank line before bullet if missing
-    cleaned = cleaned.replace(/•\s*\n\s*•/g, '•\n•'); // Remove extra lines between bullets
+    cleaned = cleaned.replace(/([^\n])\n•/g, '$1\n\n•');
+    cleaned = cleaned.replace(/•\s*\n\s*•/g, '•\n•');
     
-    // Clean up double commas and other artifacts
     cleaned = cleaned.replace(/\s*,\s*,/g, ',');
-    cleaned = cleaned.replace(/^\s*[-•]\s*$/gm, ''); // Remove standalone bullet markers
+    cleaned = cleaned.replace(/^\s*[-•]\s*$/gm, '');
     
-    // Remove any remaining standalone asterisks
     cleaned = cleaned.replace(/\*\s*/g, '');
     cleaned = cleaned.replace(/\s*\*/g, '');
     
-    // Remove leading/trailing whitespace from each line
     cleaned = cleaned.split('\n').map(line => line.trim()).join('\n');
     
-    // Final trim
     cleaned = cleaned.trim();
     
     return cleaned;
-}
+};
 
-export async function ask(question) {
+export const ask = async (question) => {
     try {
-        // Check if this is general conversation
         const isConversational = isGeneralConversation(question);
         
-        // For conversational queries, respond directly without document search
         if (isConversational) {
             const apiKey = config.key.gemini_key;
             if (!apiKey) {
                 throw new Error("Gemini API key is not configured");
             }
 
-            // Use cached model or get working model
             let workingModel = await getWorkingModel(apiKey);
             if (!workingModel) {
                 workingModel = { name: 'gemini-2.5-flash', version: 'v1' };
             }
 
-            // Build conversational message with context
             const conversationalPrompt = `You are a friendly and helpful document analysis assistant. 
 Respond naturally and conversationally to greetings and general questions. 
 If the user introduces themselves, acknowledge them warmly.
@@ -193,11 +159,8 @@ Assistant:`;
             }
         }
 
-        // For document-related queries, use RAG
-        // 1️⃣ Embed query
         const vector = await embed(question);
 
-        // 2️⃣ Vector search - get more chunks for better context
         const hits = await search(vector, 7);
 
         if (!hits || hits.length === 0) {
@@ -210,22 +173,18 @@ Assistant:`;
             file: h.payload.file
         }));
 
-        // 3️⃣ Build RAG prompt
         const messages = buildRagPrompt({
             question,
             chunks
         });
 
-        // 4️⃣ Gemini API - Direct API call with correct model names
         const apiKey = config.key.gemini_key;
         if (!apiKey) {
             throw new Error("Gemini API key is not configured");
         }
 
-        // Convert messages to Gemini format
         const geminiContents = [];
         
-        // Add system instruction as first user message if exists
         const systemMessage = messages.find(m => m.role === 'system');
         if (systemMessage) {
             geminiContents.push({
@@ -238,7 +197,6 @@ Assistant:`;
             });
         }
 
-        // Add user messages
         messages
             .filter(m => m.role === 'user')
             .forEach(m => {
@@ -248,7 +206,6 @@ Assistant:`;
                 });
             });
 
-        // Use the working model directly - gemini-2.5-flash with v1 API
         const workingModel = { name: 'gemini-2.5-flash', version: 'v1' };
         
         const url = `https://generativelanguage.googleapis.com/${workingModel.version}/models/${workingModel.name}:generateContent?key=${apiKey}`;
@@ -274,7 +231,6 @@ Assistant:`;
             throw new Error("No answer received from Gemini API");
         }
         
-        // Clean the answer to remove chunk references and technical details
         const cleanedAnswer = cleanAnswer(answer);
         
         return cleanedAnswer;
@@ -282,4 +238,4 @@ Assistant:`;
         console.error("Error in ask function:", error);
         throw new Error(`Failed to process question: ${error.message || "Unknown error"}`);
     }
-}
+};

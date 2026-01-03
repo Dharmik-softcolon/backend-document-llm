@@ -1,10 +1,7 @@
 import fs from "fs";
 import { parse } from "csv-parse/sync";
 
-/**
- * Parse CSV file and extract data
- */
-export async function parseCSV(filePath) {
+export const parseCSV = async (filePath) => {
     try {
         if (!fs.existsSync(filePath)) {
             throw new Error(`File not found: ${filePath}`);
@@ -16,9 +13,8 @@ export async function parseCSV(filePath) {
             throw new Error("CSV file is empty");
         }
 
-        // Parse CSV with headers
         const records = parse(fileContent, {
-            columns: true, // Use first line as headers
+            columns: true,
             skip_empty_lines: true,
             trim: true,
             relax_column_count: true
@@ -28,12 +24,10 @@ export async function parseCSV(filePath) {
             throw new Error("No data found in CSV file");
         }
 
-        // Convert CSV rows to text chunks
         const pages = [];
         const headers = Object.keys(records[0]);
         
         records.forEach((row, index) => {
-            // Create a readable text representation of each row
             const rowText = headers
                 .map(header => {
                     const value = row[header] || '';
@@ -44,7 +38,7 @@ export async function parseCSV(filePath) {
             pages.push({
                 page: index + 1,
                 text: rowText,
-                rowData: row // Keep original row data for reference
+                rowData: row
             });
         });
 
@@ -53,5 +47,5 @@ export async function parseCSV(filePath) {
         console.error("Error parsing CSV:", error);
         throw new Error(`Failed to parse CSV: ${error.message || "Unknown error"}`);
     }
-}
+};
 

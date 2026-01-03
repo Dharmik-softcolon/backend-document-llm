@@ -2,12 +2,9 @@ import { qdrant } from "../config/qdrant.js";
 import { v4 as uuid } from "uuid";
 
 const COLLECTION_NAME = "documents";
-const VECTOR_SIZE = 768; // Gemini embedding size
+const VECTOR_SIZE = 768;
 
-/**
- * Ensure collection exists (run once at startup)
- */
-export async function ensureCollection() {
+export const ensureCollection = async () => {
     try {
         const collections = await qdrant.getCollections();
 
@@ -31,18 +28,13 @@ export async function ensureCollection() {
         console.error("Error ensuring Qdrant collection:", error);
         throw new Error(`Failed to ensure Qdrant collection: ${error.message || "Unknown error"}`);
     }
-}
+};
 
-/**
- * Store document chunks
- */
-export async function storeChunks(chunks) {
-    // Validate input
+export const storeChunks = async (chunks) => {
     if (!chunks || !Array.isArray(chunks)) {
         throw new Error("Chunks must be a non-empty array");
     }
 
-    // Filter out empty chunks and validate
     const validChunks = chunks.filter(c => {
         return c && 
                c.text && 
@@ -76,12 +68,9 @@ export async function storeChunks(chunks) {
         console.error("Error storing chunks in Qdrant:", error);
         throw new Error(`Failed to store chunks: ${error.message || "Unknown error"}`);
     }
-}
+};
 
-/**
- * Search similar chunks
- */
-export async function search(vector, limit = 5) {
+export const search = async (vector, limit = 5) => {
     try {
         if (!vector || !Array.isArray(vector) || vector.length === 0) {
             throw new Error("Vector must be a non-empty array");
@@ -97,4 +86,4 @@ export async function search(vector, limit = 5) {
         console.error("Error in Qdrant search:", error);
         throw new Error(`Vector search failed: ${error.message || "Unknown error"}`);
     }
-}
+};

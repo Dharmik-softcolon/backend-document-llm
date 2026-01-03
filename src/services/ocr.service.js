@@ -1,10 +1,7 @@
 import Tesseract from "tesseract.js";
 import fs from "fs";
 
-/**
- * Run OCR on an image file
- */
-export async function runOCR(imagePath) {
+export const runOCR = async (imagePath) => {
     try {
         if (!fs.existsSync(imagePath)) {
             throw new Error(`Image file not found: ${imagePath}`);
@@ -14,7 +11,6 @@ export async function runOCR(imagePath) {
         
         const { data: { text } } = await Tesseract.recognize(imagePath, "eng", {
             logger: m => {
-                // Only log progress for long operations
                 if (m.status === 'recognizing text') {
                     console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
                 }
@@ -26,4 +22,4 @@ export async function runOCR(imagePath) {
         console.error("OCR Error:", error);
         throw new Error(`OCR failed: ${error.message || "Unknown error"}`);
     }
-}
+};

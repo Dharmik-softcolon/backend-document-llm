@@ -1,5 +1,4 @@
-export function chunkText(text, size = 800, overlap = 200) {
-    // Validate input
+export const chunkText = (text, size = 800, overlap = 200) => {
     if (!text || typeof text !== 'string') {
         return [];
     }
@@ -14,7 +13,6 @@ export function chunkText(text, size = 800, overlap = 200) {
 
     while (start < trimmedText.length) {
         const chunk = trimmedText.slice(start, start + size).trim();
-        // Only add non-empty chunks
         if (chunk.length > 0) {
             chunks.push(chunk);
         }
@@ -22,4 +20,4 @@ export function chunkText(text, size = 800, overlap = 200) {
     }
 
     return chunks;
-}
+};
