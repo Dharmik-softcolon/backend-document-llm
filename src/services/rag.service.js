@@ -1,52 +1,10 @@
 import { embed } from "./embedding.service.js";
 import { search } from "./qdrant.service.js";
-import { openai } from "../config/gemini.js";
 import { buildRagPrompt } from "../utils/prompt.utils.js";
 import { config } from "../config/credential.js";
 
-let cachedWorkingModel = null;
-
-const listAvailableModels = async () => {
-    try {
-        const apiKey = config.key.gemini_key;
-        if (!apiKey) return null;
-
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
-        );
-
-        if (response.ok) {
-            const data = await response.json();
-            return data.models || [];
-        }
-    } catch (error) {
-        console.error("Failed to list models:", error);
-    }
-    return null;
-};
-
-const getWorkingModel = async (apiKey) => {
-    if (cachedWorkingModel) {
-        return cachedWorkingModel;
-    }
-
-    const availableModels = await listAvailableModels();
-    
-    if (availableModels && availableModels.length > 0) {
-        const generateContentModel = availableModels.find(m => 
-            m.supportedGenerationMethods?.includes('generateContent')
-        );
-        
-        if (generateContentModel) {
-            const modelName = generateContentModel.name.replace('models/', '');
-            cachedWorkingModel = { name: modelName, version: 'v1beta' };
-            console.log(`Cached working model: ${modelName}`);
-            return cachedWorkingModel;
-        }
-    }
-
-    return null;
-};
+const MODEL_NAME = 'gemini-2.5-flash';
+const MODEL_VERSION = 'v1';
 
 const isGeneralConversation = (question) => {
     const trimmed = question.trim().toLowerCase();
@@ -118,11 +76,6 @@ export const ask = async (question) => {
                 throw new Error("Gemini API key is not configured");
             }
 
-            let workingModel = await getWorkingModel(apiKey);
-            if (!workingModel) {
-                workingModel = { name: 'gemini-2.5-flash', version: 'v1' };
-            }
-
             const conversationalPrompt = `You are a friendly and helpful document analysis assistant. 
 Respond naturally and conversationally to greetings and general questions. 
 If the user introduces themselves, acknowledge them warmly.
@@ -139,7 +92,7 @@ Assistant:`;
                 }
             ];
 
-            const url = `https://generativelanguage.googleapis.com/${workingModel.version}/models/${workingModel.name}:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/${MODEL_VERSION}/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -206,9 +159,7 @@ Assistant:`;
                 });
             });
 
-        const workingModel = { name: 'gemini-2.5-flash', version: 'v1' };
-        
-        const url = `https://generativelanguage.googleapis.com/${workingModel.version}/models/${workingModel.name}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/${MODEL_VERSION}/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
         const response = await fetch(url, {
             method: 'POST',
             headers: {
