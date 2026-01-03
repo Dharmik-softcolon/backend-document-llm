@@ -58,12 +58,18 @@ export const storeChunks = async (chunks) => {
                 payload: {
                     text: c.text.trim(),
                     file: c.file || "unknown",
-                    page: c.page ?? null
+                    page: c.page ?? null,
+                    type: c.type || 'text', // 'text' or 'table'
+                    metadata: c.metadata || {},
+                    timestamp: new Date().toISOString(),
+                    charCount: c.text.trim().length
                 }
             }))
         });
         
-        console.log(`Successfully stored ${validChunks.length} chunks (filtered ${chunks.length - validChunks.length} empty chunks)`);
+        const textChunks = validChunks.filter(c => c.type !== 'table').length;
+        const tableChunks = validChunks.filter(c => c.type === 'table').length;
+        console.log(`Successfully stored ${validChunks.length} chunks (${textChunks} text, ${tableChunks} tables, filtered ${chunks.length - validChunks.length} empty chunks)`);
     } catch (error) {
         console.error("Error storing chunks in Qdrant:", error);
         throw new Error(`Failed to store chunks: ${error.message || "Unknown error"}`);

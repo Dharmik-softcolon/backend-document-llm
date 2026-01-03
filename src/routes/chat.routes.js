@@ -13,8 +13,14 @@ router.post("/", async (req, res) => {
             });
         }
 
-        const answer = await ask(question.trim());
-        res.json({ answer });
+        const result = await ask(question.trim());
+        
+        // Support both old format (string) and new format (object)
+        if (typeof result === 'string') {
+            res.json({ answer: result, sources: [] });
+        } else {
+            res.json(result);
+        }
     } catch (error) {
         console.error("Error in chat route:", error);
         res.status(500).json({ 

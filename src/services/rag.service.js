@@ -58,7 +58,10 @@ export const ask = async (question) => {
             }];
 
             const response = await gemini.chat(messages);
-            return cleanAnswer(response.choices[0].message.content);
+            return {
+                answer: cleanAnswer(response.choices[0].message.content),
+                sources: []
+            };
         }
 
         // RAG flow: embed -> search -> generate
@@ -66,19 +69,52 @@ export const ask = async (question) => {
         const hits = await search(vector, 7);
 
         if (!hits || hits.length === 0) {
-            return "No relevant information found in the uploaded document.";
+            return {
+                answer: "No relevant information found in the uploaded document.",
+                sources: []
+            };
         }
 
         const chunks = hits.map(h => ({
             text: h.payload.text,
             page: h.payload.page,
-            file: h.payload.file
+            file: h.payload.file,
+            type: h.payload.type || 'text',
+            score: h.score
         }));
 
-        const messages = buildRagPrompt({ question, chunks });
+        // Separate tables from regular text for better formatting
+        const textChunks = chunks.filter(c => c.type !== 'table');
+        const tableChunks = chunks.filter(c => c.type === 'table');
+
+        const messages = buildRagPrompt({ 
+            question, 
+            chunks: [...textChunks, ...tableChunks] 
+        });
         const response = await gemini.chat(messages);
         
-        return cleanAnswer(response.choices[0].message.content);
+        // Extract unique sources
+        const sources = [];
+        const seenPages = new Set();
+        
+        for (const chunk of chunks) {
+            const key = `${chunk.file}-${chunk.page}`;
+            if (!seenPages.has(key)) {
+                seenPages.add(key);
+                sources.push({
+                    file: chunk.file,
+                    page: chunk.page,
+                    type: chunk.type,
+                    relevanceScore: chunk.score
+                });
+            }
+        }
+
+        return {
+            answer: cleanAnswer(response.choices[0].message.content),
+            sources: sources.sort((a, b) => b.relevanceScore - a.relevanceScore),
+            hasTabularData: tableChunks.length > 0
+        };
     } catch (error) {
         console.error("Error in ask function:", error);
         throw new Error(`Failed to process question: ${error.message || "Unknown error"}`);

@@ -4,6 +4,58 @@ import { runOCR } from "./ocr.service.js";
 import path from "path";
 import { createCanvas } from "canvas";
 
+/**
+ * Extract tables from PDF page text content
+ * Detects table-like structures and formats them
+ */
+const extractTables = (textContent) => {
+    const tables = [];
+    let currentTable = [];
+    let inTable = false;
+
+    const lines = textContent.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Detect table-like patterns (multiple columns separated by spaces/tabs)
+        const hasMultipleColumns = /\s{3,}/.test(line) || /\t{2,}/.test(line);
+        const hasTableChars = /[│|┃┆┇┊┋]/.test(line) || /[-─━┄┅┈┉]{3,}/.test(line);
+        
+        if (hasMultipleColumns || hasTableChars) {
+            if (!inTable) {
+                inTable = true;
+                currentTable = [];
+            }
+            currentTable.push(line.trim());
+        } else if (inTable && line.trim().length > 0) {
+            currentTable.push(line.trim());
+        } else if (inTable && line.trim().length === 0) {
+            // End of table
+            if (currentTable.length > 2) { // At least header + 2 rows
+                tables.push({
+                    type: 'table',
+                    content: currentTable.join('\n'),
+                    rows: currentTable.length
+                });
+            }
+            inTable = false;
+            currentTable = [];
+        }
+    }
+    
+    // Add final table if exists
+    if (inTable && currentTable.length > 2) {
+        tables.push({
+            type: 'table',
+            content: currentTable.join('\n'),
+            rows: currentTable.length
+        });
+    }
+    
+    return tables;
+};
+
 let pdfjsLib = null;
 
 const getPdfJs = async () => {
@@ -106,15 +158,30 @@ export const extractPdfByPage = async (filePath) => {
             const pdfData = await pdf(dataBuffer, {
                 pagerender: pageData => {
                     return pageData.getTextContent().then(textContent => {
+                        // Extract raw text
                         const text = textContent.items
                             .map(item => item.str)
                             .join(" ")
                             .trim();
 
-                        if (text.length > 0) {
+                        // Extract tables from the raw text
+                        const tables = extractTables(
+                            textContent.items
+                                .map(item => item.str)
+                                .join('\n')
+                        );
+
+                        if (text.length > 0 || tables.length > 0) {
                             pages.push({
                                 page: pageData.pageIndex + 1,
-                                text
+                                text,
+                                tables,
+                                metadata: {
+                                    hasText: text.length > 0,
+                                    hasTables: tables.length > 0,
+                                    tableCount: tables.length,
+                                    charCount: text.length
+                                }
                             });
                         }
 
@@ -128,6 +195,10 @@ export const extractPdfByPage = async (filePath) => {
 
             if (pages.length > 0) {
                 console.log(`Extracted text from ${pages.length} pages using text extraction`);
+                const totalTables = pages.reduce((sum, p) => sum + (p.tables?.length || 0), 0);
+                if (totalTables > 0) {
+                    console.log(`Found ${totalTables} tables in the document`);
+                }
                 return pages;
             }
         } catch (textExtractionError) {
@@ -171,11 +242,22 @@ export const extractPdfByPage = async (filePath) => {
                             const ocrText = await runOCR(imagePath);
                             
                             if (ocrText && ocrText.trim().length > 0) {
+                                // Extract tables from OCR text
+                                const tables = extractTables(ocrText);
+                                
                                 pages.push({
                                     page: pageNum,
-                                    text: ocrText.trim()
+                                    text: ocrText.trim(),
+                                    tables,
+                                    metadata: {
+                                        hasText: true,
+                                        hasTables: tables.length > 0,
+                                        tableCount: tables.length,
+                                        charCount: ocrText.trim().length,
+                                        extractionMethod: 'ocr'
+                                    }
                                 });
-                                console.log(`✓ OCR extracted text from page ${pageNum} (${ocrText.trim().length} characters)`);
+                                console.log(`✓ OCR extracted text from page ${pageNum} (${ocrText.trim().length} characters, ${tables.length} tables)`);
                             } else {
                                 console.log(`⚠ No text found via OCR on page ${pageNum}`);
                             }
@@ -215,7 +297,11 @@ export const extractPdfByPage = async (filePath) => {
             throw new Error("No text content found in PDF even after OCR. The PDF might be corrupted, unreadable, or contain only images without text. If this is an image-based PDF, ensure pdfjs-dist and canvas are properly installed.");
         }
 
+        const totalTables = pages.reduce((sum, p) => sum + (p.tables?.length || 0), 0);
         console.log(`Successfully extracted text from ${pages.length} pages (using ${useOCR ? 'OCR' : 'text extraction'})`);
+        if (totalTables > 0) {
+            console.log(`Total tables found: ${totalTables}`);
+        }
         return pages;
     } catch (error) {
         console.error("Error extracting PDF:", error);

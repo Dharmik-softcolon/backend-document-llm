@@ -52,13 +52,17 @@ router.post("/", (req, res, next) => {
         console.log(`Extracted ${pages.length} ${fileTypeLabel} from ${fileTypeName}`);
 
         const chunksToStore = [];
+        let totalTables = 0;
 
-        for (const { text, page } of pages) {
+        for (const pageData of pages) {
+            const { text, page, tables } = pageData;
+            
             if (!text || text.trim().length === 0) {
                 console.log(`Skipping empty ${fileTypeLabel} ${page}`);
                 continue;
             }
 
+            // Process main text content
             const chunks = chunkText(text);
 
             for (const chunk of chunks) {
@@ -78,11 +82,41 @@ router.post("/", (req, res, next) => {
                         text: chunk.trim(),
                         embedding,
                         file: fileName,
-                        page
+                        page,
+                        type: 'text'
                     });
                 } catch (embedError) {
                     console.error(`Error embedding chunk on ${fileTypeLabel} ${page}:`, embedError);
                     continue;
+                }
+            }
+
+            // Process tables separately with special handling
+            if (tables && tables.length > 0) {
+                totalTables += tables.length;
+                
+                for (const table of tables) {
+                    try {
+                        const tableText = `[TABLE]\n${table.content}\n[/TABLE]`;
+                        const embedding = await embed(tableText);
+                        
+                        if (embedding && Array.isArray(embedding) && embedding.length > 0) {
+                            chunksToStore.push({
+                                text: tableText,
+                                embedding,
+                                file: fileName,
+                                page,
+                                type: 'table',
+                                metadata: {
+                                    rows: table.rows
+                                }
+                            });
+                            console.log(`✓ Embedded table from page ${page} (${table.rows} rows)`);
+                        }
+                    } catch (tableEmbedError) {
+                        console.error(`Error embedding table on page ${page}:`, tableEmbedError);
+                        continue;
+                    }
                 }
             }
         }
@@ -97,6 +131,9 @@ router.post("/", (req, res, next) => {
         const pageCount = pages.length;
         const chunkCount = chunksToStore.length;
         console.log(`Created ${chunkCount} valid chunks from ${pageCount} ${fileTypeLabel}`);
+        if (totalTables > 0) {
+            console.log(`Processed ${totalTables} tables from the document`);
+        }
 
         await storeChunks(chunksToStore);
 
@@ -104,8 +141,9 @@ router.post("/", (req, res, next) => {
             success: true,
             pages: pageCount,
             chunks: chunkCount,
+            tables: totalTables,
             fileType: fileTypeName,
-            message: `Successfully indexed ${chunkCount} chunks from ${pageCount} ${fileTypeLabel}`
+            message: `Successfully indexed ${chunkCount} chunks from ${pageCount} ${fileTypeLabel}${totalTables > 0 ? ` (including ${totalTables} tables)` : ''}`
         });
     } catch (error) {
         console.error("Error in upload route:", error);
